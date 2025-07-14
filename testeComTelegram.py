@@ -6,12 +6,12 @@ import asyncio
 import os
 import time
 import schedule
+import json # ### NOVO ###: Biblioteca para manipular arquivos JSON
 
 # Pega o caminho absoluto do diretório onde o script está
 DIRETORIO_ATUAL = os.path.dirname(os.path.abspath(__file__))
 
-# SEU BOT_TOKEN E CHAT_ID (COLOQUE OS SEUS VALORES REAIS AQUI)
-# ATENÇÃO: Nunca compartilhe esses valores publicamente.
+# SEU BOT_TOKEN E CHAT_ID
 BOT_TOKEN = "7864806675:AAEg5rwZ_z2yPUmUkidYbuSPHjSTZb4m_K4"
 CHAT_ID = "-1002512544169"
 
@@ -19,9 +19,8 @@ CHAT_ID = "-1002512544169"
 URL_BASE = 'https://berzerk.com.br'
 URL_PAGINA = f'{URL_BASE}/collections/outlet'
 
-# NOME DO ARQUIVO QUE SERVIRÁ DE MEMÓRIA
-# Une o caminho do diretório com o nome do arquivo
-ARQUIVO_MEMORIA = os.path.join(DIRETORIO_ATUAL, 'produtos_enviados_berzerk.txt')
+# ### ALTERAÇÃO ###: Nome do arquivo de memória agora é .json
+ARQUIVO_MEMORIA_JSON = os.path.join(DIRETORIO_ATUAL, 'produtos_monitorados.json')
 
 # --- FUNÇÕES AUXILIARES ---
 
@@ -29,15 +28,27 @@ def escapar_markdown_v2(texto: str) -> str:
     caracteres_reservados = r'([_*\[\]()~`>#+\-=|{}.!])'
     return re.sub(caracteres_reservados, r'\\\1', texto)
 
-def carregar_links_enviados() -> set:
-    if not os.path.exists(ARQUIVO_MEMORIA):
-        return set()
-    with open(ARQUIVO_MEMORIA, 'r', encoding='utf-8') as f:
-        return set(line.strip() for line in f)
+# ### ALTERAÇÃO ###: Função para carregar dados do arquivo JSON
+def carregar_dados_salvos() -> dict:
+    """Carrega os dados dos produtos do arquivo JSON e retorna um dicionário."""
+    if not os.path.exists(ARQUIVO_MEMORIA_JSON):
+        return {}
+    try:
+        with open(ARQUIVO_MEMORIA_JSON, 'r', encoding='utf-8') as f:
+            lista_produtos = json.load(f)
+            # Transforma a lista de produtos em um dicionário para busca rápida pelo link
+            return {produto['link']: produto for produto in lista_produtos}
+    except (json.JSONDecodeError, IOError):
+        # Se o arquivo estiver corrompido ou vazio, começa do zero
+        return {}
 
-def salvar_link_enviado(link: str):
-    with open(ARQUIVO_MEMORIA, 'a', encoding='utf-8') as f:
-        f.write(link + '\n')
+# ### NOVO ###: Função para salvar todos os produtos no arquivo JSON
+def salvar_dados_produtos(dados_produtos: dict):
+    """Salva o dicionário de produtos de volta em uma lista no arquivo JSON."""
+    with open(ARQUIVO_MEMORIA_JSON, 'w', encoding='utf-8') as f:
+        # Converte os valores do dicionário (que são os dados do produto) em uma lista
+        lista_para_salvar = list(dados_produtos.values())
+        json.dump(lista_para_salvar, f, indent=4, ensure_ascii=False)
 
 async def send_telegram_message(bot_token, chat_id, message):
     try:
@@ -47,13 +58,17 @@ async def send_telegram_message(bot_token, chat_id, message):
     except Exception as e:
         print(f"❌ Falha ao enviar mensagem para o Telegram: {e}")
 
-# --- FUNÇÃO PRINCIPAL ---
+# --- FUNÇÃO PRINCIPAL (COM A NOVA LÓGICA) ---
 
 async def monitorar_berzerk():
-    print("🤖 Iniciando monitoramento de novidades na Berzerk...")
+    print("🤖 Iniciando monitoramento de produtos e preços na Berzerk...")
     
-    links_ja_enviados = carregar_links_enviados()
-    print(f"📄 Encontrados {len(links_ja_enviados)} produtos já notificados anteriormente.")
+    dados_salvos = carregar_dados_salvos()
+    print(f"📄 Encontrados {len(dados_salvos)} produtos na memória JSON.")
+
+    # Dicionário para guardar os dados atuais dos produtos para salvar no final
+    dados_produtos_atuais = dados_salvos.copy()
+    notificacoes_enviadas = 0
 
     try:
         pagina = requests.get(URL_PAGINA, headers={'User-Agent': 'Mozilla/5.0'})
@@ -75,49 +90,66 @@ async def monitorar_berzerk():
             print("⚠️ Não foi possível encontrar produtos na página. Verifique o site.")
             return
 
-        print(f"🔎 Encontrados {len(links_unicos)} produtos na página. Verificando novidades...")
-        novos_produtos_encontrados = 0
+        print(f"🔎 Encontrados {len(links_unicos)} produtos na página. Verificando novidades e alterações...")
 
         for link_completo, info_div in zip(links_unicos, blocos_de_info):
-            
-            if link_completo in links_ja_enviados:
-                continue
-
-            novos_produtos_encontrados += 1
-            print(f"🎉 NOVO PRODUTO ENCONTRADO: {link_completo}")
-
             nome_tag = info_div.find('span', class_="product-card__title")
             nome = nome_tag.text.strip() if nome_tag else "Nome não encontrado"
             
             preco_tag = info_div.find('sale-price', class_="text-on-sale")
+            preco_atual_texto = "Preço não encontrado"
             if preco_tag:
-                preco_texto = preco_tag.text.replace("Preço promocional", "").strip()
+                preco_atual_texto = preco_tag.text.replace("Preço promocional", "").strip()
+
+            # Prepara os dados do produto atual para comparações e para salvar
+            info_produto_atual = {'link': link_completo, 'nome': nome, 'preco': preco_atual_texto}
+
+            ### ### ALTERAÇÃO CENTRAL DA LÓGICA ### ###
+
+            # Cenário 1: O produto é NOVO
+            if link_completo not in dados_salvos:
+                print(f"🎉 NOVO PRODUTO ENCONTRADO: {nome}")
+                notificacoes_enviadas += 1
+                
+                message = (
+                    f"🚨 *NOVO DROP NA BERZERK* 🚨\n\n"
+                    f"👕 *Produto*: {escapar_markdown_v2(nome)}\n"
+                    f"💰 *Preço*: {escapar_markdown_v2(preco_atual_texto)}\n\n"
+                    f"🔗 *Acesse agora mesmo*:\n"
+                    f"[Clique aqui para ver o produto]({link_completo})"
+                )
+                await send_telegram_message(BOT_TOKEN, CHAT_ID, message)
+                dados_produtos_atuais[link_completo] = info_produto_atual
+            
+            # Cenário 2: O produto JÁ EXISTE, verificar alteração de preço
             else:
-                preco_texto = "Preço não encontrado"
+                preco_salvo = dados_salvos[link_completo].get('preco', 'Preço não salvo')
+                if preco_atual_texto != preco_salvo and preco_atual_texto != "Preço não encontrado":
+                    print(f"💰 ALTERAÇÃO DE PREÇO: {nome}")
+                    notificacoes_enviadas += 1
+                    
+                    message = (
+                        f"💸 *ALTERAÇÃO DE PREÇO DETECTADA* 💸\n\n"
+                        f"👕 *Produto*: {escapar_markdown_v2(nome)}\n"
+                        f"📉 *Preço Antigo*: {escapar_markdown_v2(preco_salvo)}\n"
+                        f"📈 *Preço Novo*: {escapar_markdown_v2(preco_atual_texto)}\n\n"
+                        f"🔗 *Acesse agora mesmo*:\n"
+                        f"[Clique aqui para ver o produto]({link_completo})"
+                    )
+                    await send_telegram_message(BOT_TOKEN, CHAT_ID, message)
+                    dados_produtos_atuais[link_completo] = info_produto_atual
             
-            nome_escapado = escapar_markdown_v2(nome)
-            preco_escapado = escapar_markdown_v2(preco_texto)
+            await asyncio.sleep(1) # Pausa entre as verificações para não sobrecarregar
 
-            message = (
-                f"🚨 *NOVO DROP NA BERZERK* 🚨\n\n"
-                f"👕 *Produto*: {nome_escapado}\n"
-                f"💰 *Preço*: {preco_escapado}\n\n"
-                f"🔗 *Acesse agora mesmo*:\n"
-                f"[Clique aqui para ver o produto]({link_completo})"
-            )
-
-            await send_telegram_message(BOT_TOKEN, CHAT_ID, message)
-            salvar_link_enviado(link_completo)
-            
-            await asyncio.sleep(1)
-
-        ### ALTERAÇÃO INÍCIO ###
-        if novos_produtos_encontrados == 0:
-            print("✅ Nenhum produto novo encontrado desta vez.")
-            # Prepara a mensagem para avisar que não há novidades
-            mensagem_sem_novidades = "✅ Nenhuma nova promoção encontrada no outlet da Berzerk desta vez\\."
+        # Cenário 3: Não houve nenhuma notificação (nem novo, nem alteração)
+        if notificacoes_enviadas == 0:
+            print("✅ Nenhuma novidade ou alteração de preço encontrada.")
+            mensagem_sem_novidades = "✅ Nenhuma nova promoção ou alteração de preço encontrada no outlet da Berzerk desta vez\\."
             await send_telegram_message(BOT_TOKEN, CHAT_ID, mensagem_sem_novidades)
-        ### ALTERAÇÃO FIM ###
+
+        # Salva o estado mais recente de todos os produtos encontrados na página
+        salvar_dados_produtos(dados_produtos_atuais)
+        print(f"💾 Dados de {len(dados_produtos_atuais)} produtos foram salvos no JSON.")
         
         print("🏁 Monitoramento finalizado.")
 
@@ -125,13 +157,13 @@ async def monitorar_berzerk():
         print(f"❌ Erro de conexão ao acessar a página da Berzerk: {e}")
     except Exception as e:
         print(f"❌ Ocorreu um erro inesperado: {e}")
+        # Em caso de erro, é mais seguro não sobrescrever o arquivo de memória
+        print("❗️ O arquivo JSON não foi modificado devido ao erro.")
 
-# --- PONTO DE ENTRADA E AGENDAMENTO ---
+
+# --- PONTO DE ENTRADA E AGENDAMENTO (Sem alterações aqui) ---
 
 def executar_tarefa():
-    """
-    Função que "empacota" a chamada assíncrona para ser usada pelo agendador.
-    """
     print("\n----------------------------------------------------")
     print(f"[{time.ctime()}] Acionando a verificação agendada...")
     try:
@@ -139,39 +171,20 @@ def executar_tarefa():
     except Exception as e:
         print(f"❌ Erro ao executar a tarefa assíncrona: {e}")
     print("----------------------------------------------------\n")
-
-# --- PONTO DE ENTRADA E AGENDAMENTO (PRINCIPAIS MUDANÇAS AQUI) ---
-
-def executar_tarefa():
-    """
-    Função que "empacota" a chamada assíncrona para ser usada pelo agendador.
-    """
-    print("\n----------------------------------------------------")
-    print(f"[{time.ctime()}] Acionando a verificação agendada...")
-    try:
-        asyncio.run(monitorar_berzerk())
-    except Exception as e:
-        print(f"❌ Erro ao executar a tarefa assíncrona: {e}")
-    print("----------------------------------------------------\n")
-
 
 if __name__ == "__main__":
     if "7864806675:AAEg5rwZ_z2yPUmUkidYbuSPHjSTZb4m_K4" in BOT_TOKEN or "-1002512544169" in CHAT_ID:
 
-
-                # 1. Agendar a tarefa para rodar a cada 6 horas
         schedule.every(6).hours.do(executar_tarefa)
         
-        print("✅ Agendamento configurado! O script irá rodar a cada 6 horas.")
+        print("✅ Agendamento configurado! O script irá rodar a cada 6 hours.")
         print("🚀 Executando a primeira verificação imediatamente...")
         
-        # Executa a tarefa uma vez logo no início
         executar_tarefa()
 
-        # 2. Loop infinito para manter o script rodando e verificando o agendamento
         while True:
-            schedule.run_pending() # Verifica se há alguma tarefa agendada para rodar
-            time.sleep(1)          # Pausa por 1 segundo para não consumir CPU desnecessariamente
+            schedule.run_pending()
+            time.sleep(1)
     else:
         print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         print("!!! ATENÇÃO: PREENCHA SEU BOT_TOKEN E CHAT_ID NO CÓDIGO!!!")
