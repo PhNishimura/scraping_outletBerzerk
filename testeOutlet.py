@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 
 # URL base do site, para montagem dos links
 URL_BASE = 'https://berzerk.com.br'
-URL_PAGINA = f'{URL_BASE}/collections/oversized'
+URL_PAGINA = f'{URL_BASE}/collections/outlet'
 
 try:
     pagina = requests.get(URL_PAGINA)

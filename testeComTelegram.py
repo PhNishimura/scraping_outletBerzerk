@@ -3,42 +3,46 @@ from bs4 import BeautifulSoup
 import re
 import telegram
 import asyncio
-import os # Usaremos o 'os' para verificar se nosso arquivo de "memória" existe
+import os
+import time      # <--- ADICIONADO: Para a pausa no loop
+import schedule  # <--- ADICIONADO: A biblioteca de agendamento
+
+
+# Pega o caminho absoluto do diretório onde o script está
+DIRETORIO_ATUAL = os.path.dirname(os.path.abspath(__file__))
+
 
 # SEU BOT_TOKEN E CHAT_ID (COLOQUE OS SEUS VALORES REAIS AQUI)
 # ATENÇÃO: Nunca compartilhe esses valores publicamente.
-BOT_TOKEN = "8128120473:AAHCSbpVVR8FRsLnt82OuWqJnEepQHmZ8Eg" # Ex: "8128120473:AAHCSbpVVR8FRsLnt82OuWqJnEepQHmZ8Eg"
-CHAT_ID = "-1002258395718"   # Ex: "-1002258395718"
+BOT_TOKEN = "7864806675:AAEg5rwZ_z2yPUmUkidYbuSPHjSTZb4m_K4"
+CHAT_ID = "-1002512544169"
 
 # URLS DA BERZERK
 URL_BASE = 'https://berzerk.com.br'
-URL_PAGINA = f'{URL_BASE}/collections/oversized'
+URL_PAGINA = f'{URL_BASE}/collections/outlet'
 
 # NOME DO ARQUIVO QUE SERVIRÁ DE MEMÓRIA
-ARQUIVO_MEMORIA = 'produtos_enviados_berzerk.txt'
+# Une o caminho do diretório com o nome do arquivo
+ARQUIVO_MEMORIA = os.path.join(DIRETORIO_ATUAL, 'produtos_enviados_berzerk.txt')
 
 
-# --- FUNÇÕES AUXILIARES (DO SEU CÓDIGO ORIGINAL, POUCAS MUDANÇAS) ---
+# --- FUNÇÕES AUXILIARES (sem alterações) ---
 
 def escapar_markdown_v2(texto: str) -> str:
-    """Prepara o texto para ser enviado via Telegram no modo MarkdownV2."""
     caracteres_reservados = r'([_*\[\]()~`>#+\-=|{}.!])'
     return re.sub(caracteres_reservados, r'\\\1', texto)
 
 def carregar_links_enviados() -> set:
-    """Carrega os links do nosso arquivo de memória para um set."""
     if not os.path.exists(ARQUIVO_MEMORIA):
         return set()
     with open(ARQUIVO_MEMORIA, 'r', encoding='utf-8') as f:
         return set(line.strip() for line in f)
 
 def salvar_link_enviado(link: str):
-    """Salva um novo link no nosso arquivo de memória."""
     with open(ARQUIVO_MEMORIA, 'a', encoding='utf-8') as f:
         f.write(link + '\n')
 
 async def send_telegram_message(bot_token, chat_id, message):
-    """Envia a mensagem formatada para o Telegram."""
     try:
         bot = telegram.Bot(token=bot_token)
         await bot.send_message(chat_id=chat_id, text=message, parse_mode='MarkdownV2')
@@ -47,17 +51,15 @@ async def send_telegram_message(bot_token, chat_id, message):
         print(f"❌ Falha ao enviar mensagem para o Telegram: {e}")
 
 
-# --- FUNÇÃO PRINCIPAL (TOTALMENTE ADAPTADA PARA A BERZERK) ---
+# --- FUNÇÃO PRINCIPAL (sem alterações na lógica interna) ---
 
 async def monitorar_berzerk():
-    """Função principal que raspa o site da Berzerk e notifica sobre novos produtos."""
     print("🤖 Iniciando monitoramento de novidades na Berzerk...")
     
     links_ja_enviados = carregar_links_enviados()
     print(f"📄 Encontrados {len(links_ja_enviados)} produtos já notificados anteriormente.")
 
     try:
-        # --- Lógica de Scraping que já tínhamos ---
         pagina = requests.get(URL_PAGINA, headers={'User-Agent': 'Mozilla/5.0'})
         pagina.raise_for_status()
         dados_pagina = BeautifulSoup(pagina.text, 'html.parser')
@@ -80,18 +82,14 @@ async def monitorar_berzerk():
         print(f"🔎 Encontrados {len(links_unicos)} produtos na página. Verificando novidades...")
         novos_produtos_encontrados = 0
 
-        # --- Loop e Lógica de Notificação ---
         for link_completo, info_div in zip(links_unicos, blocos_de_info):
             
-            # A MÁGICA ACONTECE AQUI: Pular o produto se o link já foi enviado antes
             if link_completo in links_ja_enviados:
                 continue
 
-            # Se chegou aqui, é um produto novo!
             novos_produtos_encontrados += 1
             print(f"🎉 NOVO PRODUTO ENCONTRADO: {link_completo}")
 
-            # Extrair os dados do produto (como já fazíamos)
             nome_tag = info_div.find('span', class_="product-card__title")
             nome = nome_tag.text.strip() if nome_tag else "Nome não encontrado"
             
@@ -101,7 +99,6 @@ async def monitorar_berzerk():
             else:
                 preco_texto = "Preço não encontrado"
             
-            # Preparar a mensagem para o Telegram
             nome_escapado = escapar_markdown_v2(nome)
             preco_escapado = escapar_markdown_v2(preco_texto)
 
@@ -113,11 +110,9 @@ async def monitorar_berzerk():
                 f"[Clique aqui para ver o produto]({link_completo})"
             )
 
-            # Enviar a notificação e salvar na memória
             await send_telegram_message(BOT_TOKEN, CHAT_ID, message)
             salvar_link_enviado(link_completo)
             
-            # Pequena pausa para não sobrecarregar a API do Telegram
             await asyncio.sleep(1)
 
         if novos_produtos_encontrados == 0:
@@ -131,12 +126,37 @@ async def monitorar_berzerk():
         print(f"❌ Ocorreu um erro inesperado: {e}")
 
 
-# --- PONTO DE ENTRADA DO SCRIPT ---
+# --- PONTO DE ENTRADA E AGENDAMENTO (PRINCIPAIS MUDANÇAS AQUI) ---
+
+def executar_tarefa():
+    """
+    Função que "empacota" a chamada assíncrona para ser usada pelo agendador.
+    """
+    print("\n----------------------------------------------------")
+    print(f"[{time.ctime()}] Acionando a verificação agendada...")
+    try:
+        asyncio.run(monitorar_berzerk())
+    except Exception as e:
+        print(f"❌ Erro ao executar a tarefa assíncrona: {e}")
+    print("----------------------------------------------------\n")
+
+
 if __name__ == "__main__":
-    # Verifica se as credenciais foram preenchidas
-    if "SEU_BOT_TOKEN_AQUI" in BOT_TOKEN or "SEU_CHAT_ID_AQUI" in CHAT_ID:
+    if "7864806675:AAEg5rwZ_z2yPUmUkidYbuSPHjSTZb4m_K4" in BOT_TOKEN or "-1002512544169" in CHAT_ID:
         print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         print("!!! ATENÇÃO: PREENCHA SEU BOT_TOKEN E CHAT_ID NO CÓDIGO!!!")
         print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
     else:
-        asyncio.run(monitorar_berzerk())
+        # 1. Agendar a tarefa para rodar a cada 6 horas
+        schedule.every(6).hours.do(executar_tarefa)
+        
+        print("✅ Agendamento configurado! O script irá rodar a cada 6 horas.")
+        print("🚀 Executando a primeira verificação imediatamente...")
+        
+        # Executa a tarefa uma vez logo no início
+        executar_tarefa()
+
+        # 2. Loop infinito para manter o script rodando e verificando o agendamento
+        while True:
+            schedule.run_pending() # Verifica se há alguma tarefa agendada para rodar
+            time.sleep(1)          # Pausa por 1 segundo para não consumir CPU desnecessariamente
