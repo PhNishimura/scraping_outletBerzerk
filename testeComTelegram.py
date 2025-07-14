@@ -4,13 +4,11 @@ import re
 import telegram
 import asyncio
 import os
-import time      # <--- ADICIONADO: Para a pausa no loop
-import schedule  # <--- ADICIONADO: A biblioteca de agendamento
-
+import time
+import schedule
 
 # Pega o caminho absoluto do diretório onde o script está
 DIRETORIO_ATUAL = os.path.dirname(os.path.abspath(__file__))
-
 
 # SEU BOT_TOKEN E CHAT_ID (COLOQUE OS SEUS VALORES REAIS AQUI)
 # ATENÇÃO: Nunca compartilhe esses valores publicamente.
@@ -25,8 +23,7 @@ URL_PAGINA = f'{URL_BASE}/collections/outlet'
 # Une o caminho do diretório com o nome do arquivo
 ARQUIVO_MEMORIA = os.path.join(DIRETORIO_ATUAL, 'produtos_enviados_berzerk.txt')
 
-
-# --- FUNÇÕES AUXILIARES (sem alterações) ---
+# --- FUNÇÕES AUXILIARES ---
 
 def escapar_markdown_v2(texto: str) -> str:
     caracteres_reservados = r'([_*\[\]()~`>#+\-=|{}.!])'
@@ -50,8 +47,7 @@ async def send_telegram_message(bot_token, chat_id, message):
     except Exception as e:
         print(f"❌ Falha ao enviar mensagem para o Telegram: {e}")
 
-
-# --- FUNÇÃO PRINCIPAL (sem alterações na lógica interna) ---
+# --- FUNÇÃO PRINCIPAL ---
 
 async def monitorar_berzerk():
     print("🤖 Iniciando monitoramento de novidades na Berzerk...")
@@ -115,8 +111,13 @@ async def monitorar_berzerk():
             
             await asyncio.sleep(1)
 
+        ### ALTERAÇÃO INÍCIO ###
         if novos_produtos_encontrados == 0:
             print("✅ Nenhum produto novo encontrado desta vez.")
+            # Prepara a mensagem para avisar que não há novidades
+            mensagem_sem_novidades = "✅ Nenhuma nova promoção encontrada no outlet da Berzerk desta vez\\."
+            await send_telegram_message(BOT_TOKEN, CHAT_ID, mensagem_sem_novidades)
+        ### ALTERAÇÃO FIM ###
         
         print("🏁 Monitoramento finalizado.")
 
@@ -125,6 +126,19 @@ async def monitorar_berzerk():
     except Exception as e:
         print(f"❌ Ocorreu um erro inesperado: {e}")
 
+# --- PONTO DE ENTRADA E AGENDAMENTO ---
+
+def executar_tarefa():
+    """
+    Função que "empacota" a chamada assíncrona para ser usada pelo agendador.
+    """
+    print("\n----------------------------------------------------")
+    print(f"[{time.ctime()}] Acionando a verificação agendada...")
+    try:
+        asyncio.run(monitorar_berzerk())
+    except Exception as e:
+        print(f"❌ Erro ao executar a tarefa assíncrona: {e}")
+    print("----------------------------------------------------\n")
 
 # --- PONTO DE ENTRADA E AGENDAMENTO (PRINCIPAIS MUDANÇAS AQUI) ---
 
@@ -143,11 +157,9 @@ def executar_tarefa():
 
 if __name__ == "__main__":
     if "7864806675:AAEg5rwZ_z2yPUmUkidYbuSPHjSTZb4m_K4" in BOT_TOKEN or "-1002512544169" in CHAT_ID:
-        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        print("!!! ATENÇÃO: PREENCHA SEU BOT_TOKEN E CHAT_ID NO CÓDIGO!!!")
-        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-    else:
-        # 1. Agendar a tarefa para rodar a cada 6 horas
+
+
+                # 1. Agendar a tarefa para rodar a cada 6 horas
         schedule.every(6).hours.do(executar_tarefa)
         
         print("✅ Agendamento configurado! O script irá rodar a cada 6 horas.")
@@ -160,3 +172,7 @@ if __name__ == "__main__":
         while True:
             schedule.run_pending() # Verifica se há alguma tarefa agendada para rodar
             time.sleep(1)          # Pausa por 1 segundo para não consumir CPU desnecessariamente
+    else:
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        print("!!! ATENÇÃO: PREENCHA SEU BOT_TOKEN E CHAT_ID NO CÓDIGO!!!")
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
