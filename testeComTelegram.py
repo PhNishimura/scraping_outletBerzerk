@@ -87,7 +87,7 @@ async def monitorar_berzerk():
             nome_tag = info_div.find('span', class_="product-card__title")
             nome = nome_tag.text.strip() if nome_tag else "Nome não encontrado"
             
-            preco_tag = info_div.find('sale-price', class_="text-on-sale")
+            preco_tag = preco_tag = info_div.find('sale-price')
             preco_atual_texto = "Preço não encontrado"
             if preco_tag:
                 preco_atual_texto = preco_tag.text.replace("Preço promocional", "").strip()
