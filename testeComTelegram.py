@@ -12,8 +12,8 @@ import json
 DIRETORIO_ATUAL = os.path.dirname(os.path.abspath(__file__))
 
 # SEU BOT_TOKEN E CHAT_ID
-BOT_TOKEN = "7864806675:AAEg5rwZ_z2yPUmUkidYbuSPHjSTZb4m_K4"
-CHAT_ID = "-1002512544169"
+BOT_TOKEN = "SEU BOT TOKEN"
+CHAT_ID = "SEU CHAT ID"
 
 # URLS DA BERZERK
 URL_BASE = 'https://berzerk.com.br'
