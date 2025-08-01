@@ -3,7 +3,7 @@
 
 # 🤖 Berzerk Outlet Monitor Bot Scraping 🤖
 
-Eu não queria mais perder as promoções do outlet da loja [Berzerk](https://berzerk.com.br/collections/outlet), portanto fiz esse bot, que faz um scraping da pagina de outlet e me envia uma mensagem no telegram na hora que um produto é postado e se ouve alteração de preço e se o produto é removio. 
+Eu não queria mais perder as promoções do outlet da loja [Berzerk](https://berzerk.com.br/collections/outlet), então criei este bot. Ele monitora a página de outlet e me envia uma mensagem no Telegram sempre que um novo produto é adicionado, se há alguma alteração de preço ou se um item é removido.
 
 ✨ Funcionalidades Principais
 
