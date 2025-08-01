@@ -21,7 +21,7 @@ URL_PAGINA = f'{URL_BASE}/collections/outlet'
 
 ARQUIVO_MEMORIA_JSON = os.path.join(DIRETORIO_ATUAL, 'produtos_monitorados.json')
 
-# --- FUNÇÕES AUXILIARES (sem alterações) ---
+# --- FUNÇÕES AUXILIARES ---
 
 def escapar_markdown_v2(texto: str) -> str:
     caracteres_reservados = r'([_*\[\]()~`>#+\-=|{}.!])'
@@ -50,7 +50,7 @@ async def send_telegram_message(bot_token, chat_id, message):
     except Exception as e:
         print(f"❌ Falha ao enviar mensagem para o Telegram: {e}")
 
-# --- FUNÇÃO PRINCIPAL (COM A NOVA LÓGICA) ---
+# --- FUNÇÃO PRINCIPAL  ---
 
 async def monitorar_berzerk():
     print("🤖 Iniciando monitoramento silencioso na Berzerk...")
@@ -64,7 +64,7 @@ async def monitorar_berzerk():
         dados_pagina = BeautifulSoup(pagina.text, 'html.parser')
 
         # ### ALTERAÇÃO ###: Dicionário para guardar apenas os produtos encontrados NESTA rodada.
-        # Isso é crucial para detectar os removidos.
+        # crucial para detectar os removidos.
         dados_produtos_na_pagina = {}
 
         blocos_de_info = dados_pagina.find_all('div', class_="v-stack gap-0.5 w-full justify-items-center")
@@ -124,7 +124,7 @@ async def monitorar_berzerk():
             
             await asyncio.sleep(1)
 
-        # ### NOVO BLOCO ###: Detectar produtos que foram REMOVIDOS ---
+        #Detecta produtos que foram REMOVIDOS
         links_salvos_set = set(dados_salvos.keys())
         links_atuais_set = set(dados_produtos_na_pagina.keys())
         
@@ -143,8 +143,6 @@ async def monitorar_berzerk():
                 )
                 await send_telegram_message(BOT_TOKEN, CHAT_ID, message)
                 await asyncio.sleep(1)
-
-        # ### REMOVIDO ###: Bloco que enviava mensagem quando não havia novidades foi removido.
 
         # Salva o estado mais recente de todos os produtos ENCONTRADOS NA PÁGINA
         salvar_dados_produtos(dados_produtos_na_pagina)
